@@ -1,6 +1,7 @@
 import os
 import cv2
 import numpy as np
+from sklearn.cluster import KMeans
 from ultralytics import YOLO
 from torchvision import transforms
 from PIL import Image
@@ -11,7 +12,7 @@ import torchreid
 VIDEO_PATH = "/Users/sheenamittal/Desktop/work /My Projects/Internship_assignment/15sec_input_720p.mp4"
 MODEL_PATH = "best.pt"
 OUTPUT_DIR = "../output/tracked_frames"
-OUTPUT_VIDEO_PATH = "/Users/sheenamittal/Desktop/work /My Projects/Internship_assignment/output/final_video.mp4"
+OUTPUT_VIDEO_PATH = "/Users/sheenamittal/Desktop/work /My Projects/Internship_assignment/output/final_video_with_jersey.mp4"
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 global_id_counter = 0
@@ -33,6 +34,16 @@ transform = transforms.Compose([
     transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
 ])
 
+JERSEY_COLOR_TO_TEAM = {
+    "white": "Real Madrid",
+    "blue": "Chelsea",
+    "red": "Manchester United",
+    "yellow": "Brazil",
+    "skyblue": "Argentina",
+    "darkblue": "France",
+    "green": "Mexico",
+    "black": "New Zealand",
+}
 
 
 def extract_features(image_crop):
@@ -119,12 +130,47 @@ def draw_frame(frame, results, class_names):
             if label == 'ball':
                 text = "Ball"
             else:
-                text = f"{label.capitalize()} {global_id}"
+                if label == 'ball':
+                    text = "Ball"
+                else:
+                    crop = frame[y1:y2, x1:x2]
+                    team_name = detect_team_name(crop)
+                    text = f"{team_name} {label.capitalize()} {global_id}"
+
             (tw, th), _ = cv2.getTextSize(text, font, font_scale, 1)
             cv2.rectangle(annotated, (x1, y1 - th - 4), (x1 + tw + 4, y1), color, -1)
             cv2.putText(annotated, text, (x1 + 2, y1 - 4), font, font_scale, (0, 0, 0), 1, cv2.LINE_AA)
     retire_lost_tracks(current_frame_track_ids)
     return annotated
+
+def detect_team_name(crop):
+    img = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
+    img = img.reshape((-1, 3))
+    kmeans = KMeans(n_clusters=2, n_init="auto")
+    labels = kmeans.fit_predict(img)
+    dominant = kmeans.cluster_centers_[np.bincount(labels).argmax()].astype(int)
+    r, g, b = dominant
+
+    # Basic color classification to map to a team
+    if r > 200 and g > 200 and b > 200:
+        return "Real Madrid"
+    elif r > 150 and g < 100 and b < 100:
+        return "Manchester United"
+    elif r < 100 and g < 100 and b > 150:
+        return "Chelsea"
+    elif r > 200 and g > 200 and b < 100:
+        return "Brazil"
+    elif r < 150 and g > 200 and b > 200:
+        return "Argentina"
+    elif r < 80 and g < 100 and b > 130:
+        return "France"
+    elif g > 150 and r < 100 and b < 100:
+        return "Mexico"
+    elif r < 50 and g < 50 and b < 50:
+        return "New Zealand"
+    else:
+        return "Unknown"
+
 
 def run_tracking(video_path, model_path, output_dir, output_video_path):
     model = YOLO(model_path)
