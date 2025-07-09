@@ -9,10 +9,13 @@ from sklearn.metrics.pairwise import cosine_similarity
 import torch
 import torchreid
 
+
+
 VIDEO_PATH = "/Users/sheenamittal/Desktop/work /My Projects/Internship_assignment/15sec_input_720p.mp4"
 MODEL_PATH = "best.pt"
 OUTPUT_DIR = "/Users/sheenamittal/Desktop/work /My Projects/Internship_assignment/output/tracked_frames"
-OUTPUT_VIDEO_PATH = "/Users/sheenamittal/Desktop/work /My Projects/Internship_assignment/output/final_video_with_jersey_1.mp4"
+OUTPUT_VIDEO_PATH = "/Users/sheenamittal/Desktop/work /My Projects/Internship_assignment/output/final_video_with_jersey_2.mp4"
+
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 global_id_counter = 0
@@ -43,6 +46,14 @@ JERSEY_COLOR_TO_TEAM = {
     "darkblue": "France",
     "green": "Mexico",
     "black": "New Zealand",
+    "orange": "Wolverhampton",
+    "purple": "Fiorentina",
+    "pink": "Palermo",
+    "maroon": "West Ham United",
+    "lightblue": "Manchester City",
+    "gold": "LA Galaxy",
+    "grey": "Juventus (away)",
+    # Add more as needed
 }
 
 
@@ -127,16 +138,18 @@ def draw_frame(frame, results, class_names):
             global_id = assign_global_id(track_id, (x1, y1, x2, y2), frame, used_global_ids)
             color = color_map.get(label, (128, 128, 128))
             cv2.rectangle(annotated, (x1, y1), (x2, y2), color, thickness)
-            if label == 'ball':
+            
+            if label == 'referee':
+                text = "Referee"
+            elif label in ['player', 'goalkeeper']:
+                # Only do jersey detection for players and goalkeepers
+                jersey_crop = frame[y1:y1 + (y2 - y1) // 2, x1:x2]  # upper half of the bounding box
+                team_name = detect_team_name(jersey_crop)
+                text = f"{team_name} #{global_id}"
+            elif label == 'ball':
                 text = "Ball"
             else:
-                if label == 'ball':
-                    text = "Ball"
-                else:
-                    jersey_crop = frame[y1:y1 + (y2 - y1) // 2, x1:x2]  # only upper half of the bounding box
-                    team_name = detect_team_name(jersey_crop)
-                    text = f"{team_name} #{global_id}"
-
+                text = label
 
             (tw, th), _ = cv2.getTextSize(text, font, font_scale, 1)
             cv2.rectangle(annotated, (x1, y1 - th - 4), (x1 + tw + 4, y1), color, -1)
@@ -145,20 +158,35 @@ def draw_frame(frame, results, class_names):
     return annotated
 
 def detect_team_name(crop):
+    # Focus on the central region of the crop
+    h, w, _ = crop.shape
+    crop = crop[int(0.1*h):int(0.6*h), int(0.2*w):int(0.8*w)]
     hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
-    hsv = hsv.reshape((-1, 3))
+    hsv_pixels = hsv.reshape((-1, 3))
 
-    kmeans = KMeans(n_clusters=2, n_init="auto")
-    labels = kmeans.fit_predict(hsv)
-    dominant = kmeans.cluster_centers_[np.bincount(labels).argmax()]
-    h, s, v = dominant
+    # Use 3 clusters for better separation
+    kmeans = KMeans(n_clusters=3, n_init=10)
+    labels = kmeans.fit_predict(hsv_pixels)
+    centers = kmeans.cluster_centers_
 
+    # Pick the cluster with the highest saturation and value (likely the jersey)
+    idx = np.argmax(centers[:,1] * centers[:,2])
+    h, s, v = centers[idx]
+
+    print(f"Dominant HSV: {h:.1f}, {s:.1f}, {v:.1f}")  # Debugging
+
+
+    # Example: Add more teams with their HSV ranges
     if s < 40 and v > 200:
         return "Real Madrid"
     elif 0 <= h <= 10 or 160 <= h <= 180:
         return "Manchester United"
+    elif 15 <= h <= 25 and s > 100 and v > 100:
+        return "Wolverhampton"  # Example: orange
     elif 100 <= h <= 130:
         return "Chelsea"
+    elif 35 <= h <= 85 and s > 100:
+        return "Norwich City"  # Example: greenish-yellow
     elif 20 <= h <= 40:
         return "Brazil"
     elif 90 <= h <= 100:
@@ -167,11 +195,14 @@ def detect_team_name(crop):
         return "France"
     elif 50 <= h <= 80:
         return "Mexico"
+    elif 120 <= h <= 140 and s < 80:
+        return "Tottenham Hotspur"  # Example: light blue/white
     elif v < 50:
         return "New Zealand"
+    # Add more teams as needed
     else:
         return "Unknown"
-    print(f"HSV: {h:.1f}, {s:.1f}, {v:.1f} => Team: {team_name}")
+
 
 
 
