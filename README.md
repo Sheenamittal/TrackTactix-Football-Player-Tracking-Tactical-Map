@@ -11,6 +11,7 @@ This project performs **real-time player tracking, re-identification, team class
 ![Demo](file:///Users/sheenamittal/Desktop/work%20/My%20Projects/Football%20player%20tracking%20system/output/tracked_frames/frame_0012.jpg)
 
 
+
 ##  Objective
 
 Build a pipeline that:
@@ -25,18 +26,14 @@ Build a pipeline that:
 
 ```mermaid
 flowchart TD
-    A[Input Football Video] --> B[YOLOv8 Detection & Tracking]
-    B --> C[Crop Detected Player Image]
+    A[Input Video] --> B[YOLOv8 Object Detection]
+    B --> C[Tracking + Assign Track ID]
     C --> D[Torchreid (ReID) Feature Extraction]
     D --> E[Global ID Assignment]
-    B --> F[Player Position Data]
-    E --> G[Assign to Team (Left/Right)]
-    G --> H[Track Info per Player]
-    F --> I[Update Tactical Minimap]
-    H --> J[Overlay Player ID & Team on Frame]
-    I --> J
-    J --> K[Write Annotated Frame to Output Video]
-
+    E --> F[Team Side Estimation]
+    F --> G[Mini-map Generation]
+    G --> H[Final Frame Annotated]
+    H --> I[Save Annotated Frames & Video]
 ```
 
 
