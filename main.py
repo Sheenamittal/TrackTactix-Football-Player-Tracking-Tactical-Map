@@ -9,10 +9,10 @@ import torch
 import torchreid
 from collections import defaultdict
 
-VIDEO_PATH = "/Users/sheenamittal/Desktop/work /My Projects/Internship_assignment/15sec_input_720p.mp4"
+VIDEO_PATH = "15sec_input_720p.mp4"
 MODEL_PATH = "best.pt"
-OUTPUT_DIR = "/Users/sheenamittal/Desktop/work /My Projects/Internship_assignment/output/tracked_frames"
-OUTPUT_VIDEO_PATH = "/Users/sheenamittal/Desktop/work /My Projects/Internship_assignment/output/final_video_10.mp4"
+OUTPUT_DIR = "output/tracked_frames"
+OUTPUT_VIDEO_PATH = "output/final_video_tacticalmap.mp4"
 
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
@@ -35,6 +35,8 @@ transform = transforms.Compose([
     transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
 ])
 
+
+
 def extract_features(image_crop):
     try:
         img = Image.fromarray(cv2.cvtColor(image_crop, cv2.COLOR_BGR2RGB))
@@ -44,6 +46,9 @@ def extract_features(image_crop):
         return features.cpu().numpy().flatten()
     except:
         return None
+    
+    
+    
 
 def match_in_gallery(features, used_global_ids, threshold=0.7):
     filtered = [g for g in inactive_gallery if g['global_id'] not in used_global_ids]
@@ -57,17 +62,24 @@ def match_in_gallery(features, used_global_ids, threshold=0.7):
         return gallery_ids[best_idx]
     return None
 
+
+
 def assign_global_id(track_id, bbox, frame, used_global_ids):
     global global_id_counter
     if track_id in active_tracks:
         global_id = active_tracks[track_id]['global_id']
         if global_id not in used_global_ids:
+            # Update position for existing track
+            x1, y1, x2, y2 = map(int, bbox)
+            active_tracks[track_id]['last_position'] = ((x1+x2)/2, (y1+y2)/2)
             return global_id
+    
     x1, y1, x2, y2 = map(int, bbox)
     crop = frame[y1:y2, x1:x2]
     features = extract_features(crop)
     if features is None:
         return None
+    
     matched_global_id = match_in_gallery(features, used_global_ids)
     if matched_global_id is not None:
         global_id = matched_global_id
@@ -75,9 +87,19 @@ def assign_global_id(track_id, bbox, frame, used_global_ids):
         global_id_counter += 1
         global_id = global_id_counter
         inactive_gallery.append({'global_id': global_id, 'features': features})
-    active_tracks[track_id] = {'global_id': global_id, 'features': features}
+    
+    # Initialize new track with position data
+    active_tracks[track_id] = {
+        'global_id': global_id,
+        'features': features,
+        'last_position': ((x1+x2)/2, (y1+y2)/2) 
+    }
+    
     used_global_ids.add(global_id)
     return global_id
+
+
+
 
 def retire_lost_tracks(current_track_ids):
     lost_ids = set(active_tracks.keys()) - set(current_track_ids)
@@ -90,10 +112,49 @@ def retire_lost_tracks(current_track_ids):
     for tid in lost_ids:
         del active_tracks[tid]
 
+
+
+
 def get_team_assignment(bbox, frame_width):
     """Simple team assignment based on player position"""
     x_center = (bbox[0] + bbox[2]) / 2
     return "Team A" if x_center < frame_width/2 else "Team B"
+
+
+
+def init_minimap(frame):
+    """Create blank minimap with field markings"""
+    h, w = frame.shape[:2]
+    minimap = np.zeros((h//5, w//5, 3), dtype=np.uint8)
+    
+    # Draw field markings (simplified)
+    cv2.rectangle(minimap, (0,0), (minimap.shape[1], minimap.shape[0]), (0,100,0), -1)
+    cv2.line(minimap, (minimap.shape[1]//2, 0), (minimap.shape[1]//2, minimap.shape[0]), (255,255,255), 1)
+    cv2.circle(minimap, (minimap.shape[1]//2, minimap.shape[0]//2), 30, (255,255,255), 1)
+    return minimap
+
+
+
+def update_minimap(minimap, tracks, frame_shape):
+    """Update minimap with current player positions"""
+    minimap_copy = minimap.copy()
+    for tid, data in tracks.items():
+        if 'last_position' in data:
+            # Convert frame coordinates to minimap coordinates
+            x = int(data['last_position'][0] * minimap.shape[1] / frame_shape[1])
+            y = int(data['last_position'][1] * minimap.shape[0] / frame_shape[0])
+            
+            # Determine color based on team
+            if "United" in data.get('team',''):
+                color = (0, 0, 255)  # Red for Man Utd
+            elif "City" in data.get('team',''):
+                color = (255, 0, 0)   # Blue for Man City
+            else:
+                color = (255, 255, 0) # Yellow for others
+            
+            cv2.circle(minimap_copy, (x,y), 3, color, -1)
+    return minimap_copy
+
 
 def draw_frame(frame, results, class_names):
     annotated = frame.copy()
@@ -108,6 +169,10 @@ def draw_frame(frame, results, class_names):
     }
     used_global_ids = set()
     current_frame_track_ids = []
+    
+     # Initialize minimap on first frame
+    if not hasattr(draw_frame, 'minimap_template'):
+        draw_frame.minimap_template = init_minimap(frame)
     
     # Initialize team names on first frame
     if not hasattr(draw_frame, 'team_names'):
@@ -145,7 +210,17 @@ def draw_frame(frame, results, class_names):
             cv2.putText(annotated, text, (x1 + 2, y1 - 4), font, font_scale, (0, 0, 0), 1, cv2.LINE_AA)
     
     retire_lost_tracks(current_frame_track_ids)
+    
+    # Update minimap with current positions
+    minimap = update_minimap(draw_frame.minimap_template, active_tracks, frame.shape)
+    
+    # Overlay minimap on frame (top-right corner)
+    map_h, map_w = minimap.shape[:2]
+    annotated[10:10+map_h, frame.shape[1]-10-map_w:frame.shape[1]-10] = minimap
     return annotated
+
+
+
 
 
 def detect_team_sides(frame, boxes):
@@ -169,6 +244,10 @@ def detect_team_sides(frame, boxes):
         return ("Team A", "Team B")
     
     return ("Manchester United", "Manchester City") if left_team['avg_x']/left_team['count'] < frame.shape[1]/2 else ("Manchester City", "Manchester United")
+
+
+
+
 
 def run_tracking(video_path, model_path, output_dir, output_video_path):
     model = YOLO(model_path)
@@ -195,6 +274,9 @@ def run_tracking(video_path, model_path, output_dir, output_video_path):
     cap.release()
     out_writer.release()
     print(f"Processed {frame_idx} frames. Video saved to {output_video_path}")
+    
+    
+
 
 if __name__ == "__main__":
     run_tracking(VIDEO_PATH, MODEL_PATH, OUTPUT_DIR, OUTPUT_VIDEO_PATH)
