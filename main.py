@@ -7,11 +7,12 @@ from PIL import Image
 from sklearn.metrics.pairwise import cosine_similarity
 import torch
 import torchreid
+from collections import defaultdict
 
 VIDEO_PATH = "/Users/sheenamittal/Desktop/work /My Projects/Internship_assignment/15sec_input_720p.mp4"
 MODEL_PATH = "best.pt"
 OUTPUT_DIR = "/Users/sheenamittal/Desktop/work /My Projects/Internship_assignment/output/tracked_frames"
-OUTPUT_VIDEO_PATH = "/Users/sheenamittal/Desktop/work /My Projects/Internship_assignment/output/final_video_9.mp4"
+OUTPUT_VIDEO_PATH = "/Users/sheenamittal/Desktop/work /My Projects/Internship_assignment/output/final_video_10.mp4"
 
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
@@ -108,6 +109,13 @@ def draw_frame(frame, results, class_names):
     used_global_ids = set()
     current_frame_track_ids = []
     
+    # Initialize team names on first frame
+    if not hasattr(draw_frame, 'team_names'):
+        draw_frame.team_names = ("Team A", "Team B")  # Default names
+        if results.boxes.id is not None:
+            boxes = results.boxes.data.cpu().numpy()
+            draw_frame.team_names = detect_team_sides(frame, boxes)
+    
     if results.boxes.id is not None:
         boxes = results.boxes.data.cpu().numpy()
         for *xyxy, track_id, conf, cls_id in boxes:
@@ -128,7 +136,8 @@ def draw_frame(frame, results, class_names):
             elif label == 'ball':
                 text = "Ball"
             else:  # Player or goalkeeper
-                team = get_team_assignment((x1, y1, x2, y2), frame.shape[1])
+                x_center = (x1 + x2) / 2
+                team = draw_frame.team_names[0] if x_center < frame.shape[1]/2 else draw_frame.team_names[1]
                 text = f"{team} #{global_id}"
 
             (tw, th), _ = cv2.getTextSize(text, font, font_scale, 1)
@@ -137,6 +146,29 @@ def draw_frame(frame, results, class_names):
     
     retire_lost_tracks(current_frame_track_ids)
     return annotated
+
+
+def detect_team_sides(frame, boxes):
+    """Enhanced version with sanity checks"""
+    if len(boxes) < 4:  # Not enough players to determine sides
+        return ("Team A", "Team B")
+    
+    left_team, right_team = defaultdict(int), defaultdict(int)
+    
+    for *xyxy, _, _, _ in boxes:
+        x_center = (xyxy[0] + xyxy[2]) / 2
+        if x_center < frame.shape[1]/2:
+            left_team['count'] += 1
+            left_team['avg_x'] += x_center
+        else:
+            right_team['count'] += 1
+            right_team['avg_x'] += x_center
+    
+    # Sanity check - teams must have at least 2 players
+    if left_team['count'] < 2 or right_team['count'] < 2:
+        return ("Team A", "Team B")
+    
+    return ("Manchester United", "Manchester City") if left_team['avg_x']/left_team['count'] < frame.shape[1]/2 else ("Manchester City", "Manchester United")
 
 def run_tracking(video_path, model_path, output_dir, output_video_path):
     model = YOLO(model_path)
