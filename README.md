@@ -22,20 +22,6 @@ Build a pipeline that:
 
 ---
 
-##  System Overview
-
-```mermaid
-flowchart TD
-    A[Input Video] --> B[YOLOv8 Object Detection]
-    B --> C[Tracking + Assign Track ID]
-    C --> D[Torchreid (ReID) Feature Extraction]
-    D --> E[Global ID Assignment]
-    E --> F[Team Side Estimation]
-    F --> G[Mini-map Generation]
-    G --> H[Final Frame Annotated]
-    H --> I[Save Annotated Frames & Video]
-```
-
 
 ## Core Concept
 
