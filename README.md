@@ -8,7 +8,7 @@ This project performs **real-time player tracking, re-identification, team class
 
 ## Demo
 
-![Demo](file:///Users/sheenamittal/Desktop/work%20/My%20Projects/Football%20player%20tracking%20system/output/tracked_frames/frame_0012.jpg)
+![Demo](output/tracked_frames/frame_0012.jpg)
 
 
 
