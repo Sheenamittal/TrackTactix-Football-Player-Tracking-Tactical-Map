@@ -51,7 +51,7 @@ Tracks live position of each player by global ID and team
 
 Red = Manchester United, Blue = Manchester City
 
-
+---
 
 ## Project Structure
 ``` bash
@@ -65,7 +65,7 @@ Red = Manchester United, Blue = Manchester City
 ├── README.md
 
 ```
-
+---
 
 ## Requirements
 ``` bash
