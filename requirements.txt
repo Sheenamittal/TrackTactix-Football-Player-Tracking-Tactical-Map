@@ -1,16 +1,8 @@
-﻿Required packages:
-* ultralytics
-
-* torch
-
-* torchvision
-
-* torchreid
-
-* opencv-python
-
-* scikit-learn
-
-* Pillow
-
-* numpy
+ultralytics
+torch
+torchvision
+torchreid
+opencv-python
+scikit-learn
+Pillow
+numpy
